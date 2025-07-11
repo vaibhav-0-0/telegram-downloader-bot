@@ -1,81 +1,47 @@
-from yt_dlp import YoutubeDL
-import os
-import imageio_ffmpeg
-
-# Locate ffmpeg and make sure it's added to the system PATH
-ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-os.environ["PATH"] += os.pathsep + os.path.dirname(ffmpeg_path)
-
+import yt_dlp
 
 def get_formats(url):
-    ydl_opts = {
-        'quiet': True,
-        'skip_download': True,
-        'force_generic_extractor': False,
-    }
-
-    formats_list = []
-    preferred_resolutions = ["360", "480", "720", "1080"]
-
     try:
-        with YoutubeDL(ydl_opts) as ydl:
+        ydl_opts = {
+            "quiet": True,
+            "skip_download": True,
+        }
+        formats_list = []
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-
-            for f in info['formats']:
-                if f.get("vcodec") != "none":
-                    height = f.get("height")
-                    ext = f.get("ext")
-                    if height and str(height) in preferred_resolutions and ext == "mp4":
-                        size = f.get("filesize") or 0
-                        formats_list.append({
-                            "format_id": f["format_id"],
-                            "ext": ext,
-                            "resolution": f"{height}p",
-                            "filesize": size
-                        })
-
+            for fmt in info.get("formats", []):
+                if fmt.get("filesize") and fmt.get("ext") in ["mp4", "m4a"]:
+                    formats_list.append({
+                        "format_id": fmt["format_id"],
+                        "ext": fmt["ext"],
+                        "quality": fmt.get("format_note") or fmt.get("height"),
+                        "filesize": f"{round(fmt['filesize'] / 1024 / 1024, 2)} MB",
+                        "type": "video" if "video" in fmt.get("format", "") else "audio",
+                    })
         return formats_list
-
     except Exception as e:
-        print("❌ Error in get_formats:", str(e))
+        print(f"❌ Error in get_formats: {e}")
         return []
 
-
-def download_audio(url, output_name="audio"):
+def download_audio(url, format_id="bestaudio"):
     ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': f'{output_name}.%(ext)s',
-        'quiet': True,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
+        "format": format_id,
+        "outtmpl": "downloaded_audio.%(ext)s",
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
         }],
     }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url)
+        return ydl.prepare_filename(info).replace(".webm", ".mp3")
 
-    try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info).replace(".webm", ".mp3").replace(".m4a", ".mp3")
-            return filename
-    except Exception as e:
-        print("❌ Error in download_audio:", str(e))
-        return None
-
-
-def download_video(url, format_id, output_name="video"):
+def download_video(url, format_id="best"):
     ydl_opts = {
-        'format': format_id + '+bestaudio/best',
-        'outtmpl': f'{output_name}.%(ext)s',
-        'quiet': True,
-        'merge_output_format': 'mp4',
+        "format": format_id,
+        "outtmpl": "downloaded_video.%(ext)s",
     }
-
-    try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            return filename
-    except Exception as e:
-        print("❌ Error in download_video:", str(e))
-        return None
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url)
+        return ydl.prepare_filename(info)
